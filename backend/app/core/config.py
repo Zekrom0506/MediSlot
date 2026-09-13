@@ -12,7 +12,12 @@ class Settings(BaseSettings):
     environment: str = "development"
 
     database_url: str = "postgresql+psycopg://medislot:medislot@localhost:5432/medislot"
+    database_pool_size: int = 20
+    database_max_overflow: int = 20
+
     redis_url: str = "redis://localhost:6379/0"
+
+    clinic_timezone: str = "Asia/Kolkata"
 
 
 @lru_cache
