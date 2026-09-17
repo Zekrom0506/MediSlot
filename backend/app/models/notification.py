@@ -19,7 +19,5 @@ class Notification(Base):
     status: Mapped[str] = mapped_column(
         enum_column(NotificationStatus), default=NotificationStatus.PENDING.value
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

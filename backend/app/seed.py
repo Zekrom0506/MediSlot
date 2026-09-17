@@ -127,7 +127,9 @@ def create_patients(session: Session, password_hash: str) -> list[User]:
         first_name = FIRST_NAMES[number % len(FIRST_NAMES)]
         last_name = LAST_NAMES[number % len(LAST_NAMES)]
         email = f"patient{number}@medislot.dev"
-        patients.append(create_user(session, f"{first_name} {last_name}", email, UserRole.PATIENT, password_hash))
+        patients.append(
+            create_user(session, f"{first_name} {last_name}", email, UserRole.PATIENT, password_hash)
+        )
     session.flush()
     return patients
 

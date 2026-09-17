@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.core.config import get_settings
@@ -10,7 +10,7 @@ CLINIC_TIMEZONE = ZoneInfo(get_settings().clinic_timezone)
 
 def now_utc() -> datetime:
     """Current time as a timezone-aware UTC datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def today_local() -> date:
@@ -21,7 +21,7 @@ def today_local() -> date:
 def local_to_utc(local_date: date, local_time: time) -> datetime:
     """Combine a clinic-local date and time into a UTC datetime."""
     local_datetime = datetime.combine(local_date, local_time, tzinfo=CLINIC_TIMEZONE)
-    return local_datetime.astimezone(timezone.utc)
+    return local_datetime.astimezone(UTC)
 
 
 def to_local(moment: datetime) -> datetime:

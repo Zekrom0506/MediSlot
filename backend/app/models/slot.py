@@ -12,14 +12,10 @@ class Slot(Base):
 
     __tablename__ = "slots"
     # Lets the nightly generator run any number of times without creating duplicates.
-    __table_args__ = (
-        UniqueConstraint("doctor_id", "start_time", name="uq_slots_doctor_start_time"),
-    )
+    __table_args__ = (UniqueConstraint("doctor_id", "start_time", name="uq_slots_doctor_start_time"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     doctor_id: Mapped[int] = mapped_column(ForeignKey("doctors.id"))
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    status: Mapped[str] = mapped_column(
-        enum_column(SlotStatus), default=SlotStatus.AVAILABLE.value
-    )
+    status: Mapped[str] = mapped_column(enum_column(SlotStatus), default=SlotStatus.AVAILABLE.value)

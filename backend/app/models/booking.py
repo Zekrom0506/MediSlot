@@ -27,13 +27,9 @@ class Booking(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     patient_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     slot_id: Mapped[int] = mapped_column(ForeignKey("slots.id"), index=True)
-    status: Mapped[str] = mapped_column(
-        enum_column(BookingStatus), default=BookingStatus.CONFIRMED.value
-    )
+    status: Mapped[str] = mapped_column(enum_column(BookingStatus), default=BookingStatus.CONFIRMED.value)
     reason_for_visit: Mapped[str | None] = mapped_column(String(500))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     slot: Mapped[Slot] = relationship(lazy="joined")
