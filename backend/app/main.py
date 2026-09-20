@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api import auth, health
+from app.api import admin, auth, doctor_portal, doctors, health
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 
@@ -11,6 +11,9 @@ register_error_handlers(app)
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(doctors.router)
+app.include_router(doctor_portal.router)
+app.include_router(admin.router)
 
 
 @app.get("/")
