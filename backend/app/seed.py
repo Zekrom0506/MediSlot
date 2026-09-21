@@ -16,6 +16,7 @@ from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.models import Clinic, Doctor, User, WeeklySchedule
 from app.models.enums import UserRole
+from app.services import slot_service
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,9 @@ def seed(session: Session) -> bool:
     create_weekly_schedules(session, doctors)
     create_patients(session, password_hash)
     session.commit()
+
+    for doctor in doctors:
+        slot_service.generate_slots_for_doctor(session, doctor)
     return True
 
 
