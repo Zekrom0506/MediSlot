@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, enum_column
 from app.models.enums import BookingStatus
 from app.models.slot import Slot
+from app.models.user import User
 
 
 class Booking(Base):
@@ -32,4 +33,5 @@ class Booking(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    slot: Mapped[Slot] = relationship(lazy="joined")
+    slot: Mapped[Slot] = relationship()
+    patient: Mapped[User] = relationship()

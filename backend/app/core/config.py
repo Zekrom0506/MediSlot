@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     clinic_timezone: str = "Asia/Kolkata"
     slot_generation_days: int = 14
+    cancellation_deadline_hours: int = 2
 
     jwt_secret_key: str = DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"

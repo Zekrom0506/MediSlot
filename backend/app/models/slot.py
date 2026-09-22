@@ -1,9 +1,10 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, enum_column
+from app.models.doctor import Doctor
 from app.models.enums import SlotStatus
 
 
@@ -19,3 +20,7 @@ class Slot(Base):
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(enum_column(SlotStatus), default=SlotStatus.AVAILABLE.value)
+
+    # Loaded on demand (not joined) so that "SELECT ... FOR UPDATE" on slots
+    # only ever locks the slot row itself.
+    doctor: Mapped[Doctor] = relationship()
