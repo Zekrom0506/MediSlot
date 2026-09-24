@@ -1,4 +1,7 @@
 import os
+import socket
+import threading
+import time
 
 # Point the app at the test database *before* anything from `app` is imported,
 # because settings and the engine are created at import time.
@@ -9,6 +12,7 @@ os.environ.setdefault("ENVIRONMENT", "test")
 from collections.abc import Iterator  # noqa: E402
 
 import pytest  # noqa: E402
+import uvicorn  # noqa: E402
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -70,3 +74,29 @@ def client() -> Iterator[TestClient]:
     """HTTP client that calls the app in-process."""
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def live_server_url() -> Iterator[str]:
+    """Run the real app in uvicorn on a free port, for tests that need true parallel requests."""
+    listening_socket = socket.socket()
+    listening_socket.bind(("127.0.0.1", 0))
+    port = listening_socket.getsockname()[1]
+    listening_socket.close()
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    server_thread = threading.Thread(target=server.run, daemon=True)
+    server_thread.start()
+
+    waited_seconds = 0.0
+    while not server.started:
+        time.sleep(0.05)
+        waited_seconds += 0.05
+        if waited_seconds > 10:
+            raise RuntimeError("Test server did not start")
+
+    yield f"http://127.0.0.1:{port}"
+
+    server.should_exit = True
+    server_thread.join(timeout=10)
