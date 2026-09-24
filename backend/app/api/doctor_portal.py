@@ -1,12 +1,14 @@
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter
 
 from app.api.deps import DbSession, DoctorUser
+from app.schemas.booking import AppointmentOutcomeUpdate, DoctorAppointmentResponse
 from app.schemas.doctor import DoctorResponse
 from app.schemas.schedule import ScheduleEntryResponse, WeeklyScheduleUpdate
 from app.schemas.slot import BlockDayRequest, BlockDayResponse, SlotResponse
-from app.services import doctor_service, schedule_service, slot_service
+from app.services import booking_service, doctor_service, schedule_service, slot_service
 
 router = APIRouter(prefix="/api/doctor", tags=["doctor portal"])
 
@@ -66,3 +68,23 @@ def block_day(request: BlockDayRequest, current_user: DoctorUser, db: DbSession)
     doctor = doctor_service.get_doctor_for_user(db, current_user)
     blocked_count, booked_count = slot_service.block_day(db, doctor, request.date)
     return BlockDayResponse(blocked_count=blocked_count, booked_count=booked_count)
+
+
+@router.get("/appointments", response_model=list[DoctorAppointmentResponse])
+def my_appointments(
+    current_user: DoctorUser, db: DbSession, scope: Literal["today", "upcoming"] = "today"
+) -> list[DoctorAppointmentResponse]:
+    """Today's appointments or all upcoming ones."""
+    doctor = doctor_service.get_doctor_for_user(db, current_user)
+    bookings = booking_service.list_doctor_appointments(db, doctor, scope)
+    return [DoctorAppointmentResponse.from_booking(booking) for booking in bookings]
+
+
+@router.patch("/appointments/{booking_id}", response_model=DoctorAppointmentResponse)
+def record_outcome(
+    booking_id: int, request: AppointmentOutcomeUpdate, current_user: DoctorUser, db: DbSession
+) -> DoctorAppointmentResponse:
+    """Mark an appointment as completed or no-show."""
+    doctor = doctor_service.get_doctor_for_user(db, current_user)
+    booking = booking_service.record_appointment_outcome(db, doctor, booking_id, request.status)
+    return DoctorAppointmentResponse.from_booking(booking)
