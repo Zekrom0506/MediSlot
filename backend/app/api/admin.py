@@ -1,10 +1,11 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from app.api.deps import AdminUser, DbSession
+from app.schemas.admin import AdminStats
 from app.schemas.clinic import ClinicCreate, ClinicResponse, ClinicUpdate
 from app.schemas.doctor import DoctorCreate, DoctorResponse, DoctorUpdate
 from app.schemas.slot import SlotGenerationResponse
-from app.services import clinic_service, doctor_service, slot_service
+from app.services import clinic_service, doctor_service, slot_service, stats_service
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -74,3 +75,11 @@ def generate_slots(current_user: AdminUser, db: DbSession) -> SlotGenerationResp
     """Run slot generation now instead of waiting for the nightly job."""
     created_count = slot_service.generate_slots_for_all_doctors(db)
     return SlotGenerationResponse(created_count=created_count)
+
+
+@router.get("/stats", response_model=AdminStats)
+def get_stats(
+    current_user: AdminUser, db: DbSession, days: int = Query(default=14, ge=1, le=90)
+) -> AdminStats:
+    """Bookings per day, cancellation and no-show rates, and the busiest doctors."""
+    return stats_service.get_admin_stats(db, days)
