@@ -82,8 +82,12 @@ def commit_or_slot_taken(db: Session) -> None:
         raise slot_taken_error()
 
 
-def book_slot(db: Session, patient: User, slot_id: int, reason_for_visit: str | None) -> Booking:
-    """Book a slot for a patient. Exactly one of many concurrent requests can win."""
+def reserve_slot(db: Session, patient: User, slot_id: int, reason_for_visit: str | None) -> Booking:
+    """Lock the slot, check it, and add the booking to the open transaction.
+
+    Does not commit, so the caller can save more rows (like an idempotency key)
+    in the same transaction before calling commit_or_slot_taken().
+    """
     try:
         slot = lock_slot(db, slot_id)
         ensure_slot_is_bookable(db, slot)
@@ -100,6 +104,17 @@ def book_slot(db: Session, patient: User, slot_id: int, reason_for_visit: str | 
     )
     slot.status = SlotStatus.BOOKED.value
     db.add(booking)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise slot_taken_error()
+    return booking
+
+
+def book_slot(db: Session, patient: User, slot_id: int, reason_for_visit: str | None) -> Booking:
+    """Book a slot for a patient. Exactly one of many concurrent requests can win."""
+    booking = reserve_slot(db, patient, slot_id, reason_for_visit)
     commit_or_slot_taken(db)
     return booking
 
