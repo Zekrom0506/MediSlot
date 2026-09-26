@@ -1,20 +1,44 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Header, status
+from fastapi.responses import JSONResponse
 
 from app.api.deps import DbSession, PatientUser
 from app.schemas.booking import BookingCreate, BookingResponse, RescheduleRequest
-from app.services import booking_service
+from app.services import booking_service, idempotency_service
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 
 
+IdempotencyKeyHeader = Annotated[
+    str | None, Header(alias="Idempotency-Key", min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+]
+
+
 @router.post("", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
-def create_booking(request: BookingCreate, current_user: PatientUser, db: DbSession) -> BookingResponse:
-    """Book a slot. Returns 409 if someone else got it first."""
-    booking = booking_service.book_slot(db, current_user, request.slot_id, request.reason_for_visit)
-    booking = booking_service.get_booking_for_patient(db, current_user, booking.id)
-    return BookingResponse.from_booking(booking)
+def create_booking(
+    request: BookingCreate,
+    current_user: PatientUser,
+    db: DbSession,
+    idempotency_key: IdempotencyKeyHeader = None,
+) -> BookingResponse | JSONResponse:
+    """Book a slot. Returns 409 if someone else got it first.
+
+    Send an Idempotency-Key header to make retries safe: repeating the request
+    with the same key returns the first response instead of booking twice.
+    """
+    if idempotency_key is None:
+        booking = booking_service.book_slot(db, current_user, request.slot_id, request.reason_for_visit)
+        booking = booking_service.get_booking_for_patient(db, current_user, booking.id)
+        return BookingResponse.from_booking(booking)
+
+    status_code, body, was_replayed = idempotency_service.book_with_idempotency_key(
+        db, current_user, request.slot_id, request.reason_for_visit, idempotency_key
+    )
+    headers = {}
+    if was_replayed:
+        headers["Idempotent-Replayed"] = "true"
+    return JSONResponse(status_code=status_code, content=body, headers=headers)
 
 
 @router.get("/me", response_model=list[BookingResponse])
