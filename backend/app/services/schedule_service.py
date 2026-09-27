@@ -7,7 +7,7 @@ from app.core.timezones import now_utc, to_local
 from app.models import Booking, Doctor, Slot, WeeklySchedule
 from app.models.enums import SlotStatus
 from app.schemas.schedule import ScheduleEntry
-from app.services import slot_service
+from app.services import cache_service, slot_service
 
 
 def get_schedule(db: Session, doctor: Doctor) -> list[WeeklySchedule]:
@@ -73,6 +73,7 @@ def replace_schedule(db: Session, doctor: Doctor, entries: list[ScheduleEntry]) 
         )
     remove_slots_outside_schedule(db, doctor, entries)
     db.commit()
+    cache_service.invalidate_doctor(doctor.id)
 
     slot_service.generate_slots_for_doctor(db, doctor)
     return get_schedule(db, doctor)

@@ -20,6 +20,7 @@ from sqlalchemy import text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.database import SessionLocal, engine  # noqa: E402
+from app.core.redis_client import get_redis  # noqa: E402
 from app.main import app  # noqa: E402
 
 BACKEND_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -52,7 +53,8 @@ def migrated_database() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def clean_database() -> Iterator[None]:
-    """Empty every table after each test so tests cannot affect each other."""
+    """Empty every table and the test Redis database after each test."""
+    get_redis().flushdb()
     yield
     with engine.begin() as connection:
         table_list = ", ".join(TABLES_TO_CLEAN)

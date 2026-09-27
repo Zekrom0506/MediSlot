@@ -16,7 +16,7 @@ from app.core.errors import AppError, ConflictError
 from app.core.timezones import now_utc
 from app.models import IdempotencyKey, User
 from app.schemas.booking import BookingResponse
-from app.services import booking_service
+from app.services import booking_service, cache_service
 
 KEY_LIFETIME = timedelta(hours=24)
 
@@ -72,6 +72,7 @@ def book_with_idempotency_key(
         check_same_request(saved, patient, slot_id)
         return saved.response_status_code, saved.response_body, True
 
+    cache_service.invalidate_slot_day(booking.slot.doctor_id, booking.slot.start_time)
     return 201, response_body, False
 
 

@@ -18,6 +18,7 @@ from app.core.errors import BusinessRuleError, ConflictError, NotFoundError, Per
 from app.core.timezones import local_day_bounds_utc, now_utc, today_local
 from app.models import Booking, Doctor, Slot, User
 from app.models.enums import BookingStatus, SlotStatus
+from app.services import cache_service
 
 SLOT_TAKEN_MESSAGE = "Sorry, this slot was just booked. Please choose another slot."
 
@@ -116,6 +117,8 @@ def book_slot(db: Session, patient: User, slot_id: int, reason_for_visit: str | 
     """Book a slot for a patient. Exactly one of many concurrent requests can win."""
     booking = reserve_slot(db, patient, slot_id, reason_for_visit)
     commit_or_slot_taken(db)
+    # Only after the commit: invalidating earlier could let a reader re-cache the old state.
+    cache_service.invalidate_slot_day(booking.slot.doctor_id, booking.slot.start_time)
     return booking
 
 
@@ -138,6 +141,7 @@ def cancel_booking(db: Session, patient: User, booking_id: int) -> Booking:
     booking.cancelled_at = now_utc()
     slot.status = SlotStatus.AVAILABLE.value
     db.commit()
+    cache_service.invalidate_slot_day(slot.doctor_id, slot.start_time)
     return booking
 
 
@@ -187,6 +191,8 @@ def reschedule_booking(db: Session, patient: User, booking_id: int, new_slot_id:
     new_slot.status = SlotStatus.BOOKED.value
     db.add(new_booking)
     commit_or_slot_taken(db)
+    cache_service.invalidate_slot_day(old_slot.doctor_id, old_slot.start_time)
+    cache_service.invalidate_slot_day(new_slot.doctor_id, new_slot.start_time)
     return new_booking
 
 

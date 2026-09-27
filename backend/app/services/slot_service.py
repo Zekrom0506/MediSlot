@@ -9,6 +9,8 @@ from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.core.timezones import local_day_bounds_utc, local_to_utc, now_utc, today_local
 from app.models import Doctor, Slot, WeeklySchedule
 from app.models.enums import SlotStatus
+from app.schemas.slot import SlotResponse
+from app.services import cache_service
 
 
 def build_slot_times(
@@ -82,6 +84,8 @@ def generate_slots_for_doctor(
     # RETURNING only gives back the rows that were really inserted, so we can count them.
     created_ids = list(db.scalars(statement.returning(Slot.id)))
     db.commit()
+    if created_ids:
+        cache_service.invalidate_doctor(doctor.id)
     return len(created_ids)
 
 
@@ -106,6 +110,22 @@ def list_available_slots(db: Session, doctor_id: int, local_date: date) -> list[
         .order_by(Slot.start_time)
     )
     return list(db.scalars(query))
+
+
+def list_available_slots_cached(db: Session, doctor_id: int, local_date: date) -> list[SlotResponse]:
+    """Same as list_available_slots, but served from Redis when possible (cache-aside)."""
+    cached_slots = cache_service.get_cached_slots(doctor_id, local_date)
+    if cached_slots is not None:
+        return [SlotResponse.model_validate(item) for item in cached_slots]
+
+    responses = []
+    for slot in list_available_slots(db, doctor_id, local_date):
+        responses.append(SlotResponse.model_validate(slot))
+
+    cache_service.store_cached_slots(
+        doctor_id, local_date, [response.model_dump(mode="json") for response in responses]
+    )
+    return responses
 
 
 def list_all_slots_for_day(db: Session, doctor_id: int, local_date: date) -> list[Slot]:
@@ -138,6 +158,7 @@ def block_slot(db: Session, doctor: Doctor, slot_id: int) -> Slot:
         raise ConflictError("SLOT_HAS_BOOKING", "This slot is booked. Cancel the appointment first.")
     slot.status = SlotStatus.BLOCKED.value
     db.commit()
+    cache_service.invalidate_slot_day(slot.doctor_id, slot.start_time)
     return slot
 
 
@@ -152,6 +173,7 @@ def unblock_slot(db: Session, doctor: Doctor, slot_id: int) -> Slot:
         raise BusinessRuleError("SLOT_IN_PAST", "Past slots cannot be unblocked.")
     slot.status = SlotStatus.AVAILABLE.value
     db.commit()
+    cache_service.invalidate_slot_day(slot.doctor_id, slot.start_time)
     return slot
 
 
@@ -175,4 +197,5 @@ def block_day(db: Session, doctor: Doctor, local_date: date) -> tuple[int, int]:
         elif slot.status == SlotStatus.BOOKED.value:
             booked_count += 1
     db.commit()
+    cache_service.invalidate_slot_day(doctor.id, day_start)
     return blocked_count, booked_count

@@ -36,5 +36,4 @@ def get_doctor(doctor_id: int, db: DbSession) -> DoctorResponse:
 def get_available_slots(doctor_id: int, date: NotPastDate, db: DbSession) -> list[SlotResponse]:
     """Free slots for a doctor on a date (clinic time)."""
     doctor_service.get_active_doctor(db, doctor_id)
-    slots = slot_service.list_available_slots(db, doctor_id, date)
-    return [SlotResponse.model_validate(slot) for slot in slots]
+    return slot_service.list_available_slots_cached(db, doctor_id, date)
