@@ -1,6 +1,6 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, limit_login_attempts
 from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 from app.schemas.user import UserResponse
 from app.services import auth_service
@@ -15,7 +15,7 @@ def register(request: RegisterRequest, db: DbSession) -> TokenResponse:
     return auth_service.issue_tokens(user)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, dependencies=[Depends(limit_login_attempts)])
 def login(request: LoginRequest, db: DbSession) -> TokenResponse:
     """Log in with email and password."""
     return auth_service.login(db, request.email, request.password)

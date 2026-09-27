@@ -40,6 +40,10 @@ class ConflictError(AppError):
     status_code = 409
 
 
+class RateLimitExceededError(AppError):
+    status_code = 429
+
+
 def error_body(code: str, message: str) -> dict[str, dict[str, str]]:
     """Build the one error shape every endpoint returns."""
     return {"error": {"code": code, "message": message}}

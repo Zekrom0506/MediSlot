@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Header, status
 from fastapi.responses import JSONResponse
 
-from app.api.deps import DbSession, PatientUser
+from app.api.deps import DbSession, PatientUser, RateLimitedPatient
 from app.schemas.booking import BookingCreate, BookingResponse, RescheduleRequest
 from app.services import booking_service, idempotency_service
 
@@ -18,7 +18,7 @@ IdempotencyKeyHeader = Annotated[
 @router.post("", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
 def create_booking(
     request: BookingCreate,
-    current_user: PatientUser,
+    current_user: RateLimitedPatient,
     db: DbSession,
     idempotency_key: IdempotencyKeyHeader = None,
 ) -> BookingResponse | JSONResponse:

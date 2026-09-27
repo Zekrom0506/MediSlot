@@ -2,12 +2,13 @@ from collections.abc import Callable
 from typing import Annotated
 
 import jwt
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.errors import AuthenticationError, PermissionDeniedError
+from app.core.rate_limiter import booking_limiter, login_limiter
 from app.core.security import ACCESS_TOKEN_TYPE, decode_token
 from app.models import User
 from app.models.enums import UserRole
@@ -63,3 +64,20 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 PatientUser = Annotated[User, Depends(require_roles(UserRole.PATIENT))]
 DoctorUser = Annotated[User, Depends(require_roles(UserRole.DOCTOR))]
 AdminUser = Annotated[User, Depends(require_roles(UserRole.ADMIN))]
+
+
+def limit_booking_attempts(current_user: PatientUser) -> User:
+    """At most 5 booking attempts per minute per patient."""
+    booking_limiter().hit(str(current_user.id))
+    return current_user
+
+
+def limit_login_attempts(request: Request) -> None:
+    """At most 10 login attempts per minute per IP address, to slow down password guessing."""
+    client_ip = "unknown"
+    if request.client is not None:
+        client_ip = request.client.host
+    login_limiter().hit(client_ip)
+
+
+RateLimitedPatient = Annotated[User, Depends(limit_booking_attempts)]

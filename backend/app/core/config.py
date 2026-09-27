@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     database_max_overflow: int = 20
 
     redis_url: str = "redis://localhost:6379/0"
+    slot_cache_seconds: int = 60
+
+    rate_limit_enabled: bool = True
+    booking_rate_limit_per_minute: int = 5
+    login_rate_limit_per_minute: int = 10
 
     clinic_timezone: str = "Asia/Kolkata"
     slot_generation_days: int = 14
