@@ -17,8 +17,8 @@ from app.core.config import get_settings
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError, PermissionDeniedError
 from app.core.timezones import local_day_bounds_utc, now_utc, today_local
 from app.models import Booking, Doctor, Slot, User
-from app.models.enums import BookingStatus, SlotStatus
-from app.services import cache_service
+from app.models.enums import BookingStatus, NotificationType, SlotStatus
+from app.services import cache_service, notification_service
 
 SLOT_TAKEN_MESSAGE = "Sorry, this slot was just booked. Please choose another slot."
 
@@ -119,6 +119,7 @@ def book_slot(db: Session, patient: User, slot_id: int, reason_for_visit: str | 
     commit_or_slot_taken(db)
     # Only after the commit: invalidating earlier could let a reader re-cache the old state.
     cache_service.invalidate_slot_day(booking.slot.doctor_id, booking.slot.start_time)
+    notification_service.notify_booking(db, booking.id, NotificationType.CONFIRMATION)
     return booking
 
 
@@ -142,6 +143,7 @@ def cancel_booking(db: Session, patient: User, booking_id: int) -> Booking:
     slot.status = SlotStatus.AVAILABLE.value
     db.commit()
     cache_service.invalidate_slot_day(slot.doctor_id, slot.start_time)
+    notification_service.notify_booking(db, booking.id, NotificationType.CANCELLATION)
     return booking
 
 
@@ -193,6 +195,7 @@ def reschedule_booking(db: Session, patient: User, booking_id: int, new_slot_id:
     commit_or_slot_taken(db)
     cache_service.invalidate_slot_day(old_slot.doctor_id, old_slot.start_time)
     cache_service.invalidate_slot_day(new_slot.doctor_id, new_slot.start_time)
+    notification_service.notify_booking(db, new_booking.id, NotificationType.CONFIRMATION)
     return new_booking
 
 

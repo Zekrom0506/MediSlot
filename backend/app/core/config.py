@@ -21,6 +21,17 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     slot_cache_seconds: int = 60
 
+    celery_broker_url: str = "redis://localhost:6379/1"
+
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = False
+    email_from_address: str = "MediSlot <no-reply@medislot.dev>"
+    sms_provider: str = "log"
+    reminder_hours_before: int = 24
+
     rate_limit_enabled: bool = True
     booking_rate_limit_per_minute: int = 5
     login_rate_limit_per_minute: int = 10
