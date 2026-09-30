@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 from app.core.database import SessionLocal, engine  # noqa: E402
 from app.core.redis_client import get_redis  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services import notification_service  # noqa: E402
 
 BACKEND_DIRECTORY = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -59,6 +60,14 @@ def clean_database() -> Iterator[None]:
     with engine.begin() as connection:
         table_list = ", ".join(TABLES_TO_CLEAN)
         connection.execute(text(f"TRUNCATE {table_list} RESTART IDENTITY CASCADE"))
+
+
+@pytest.fixture(autouse=True)
+def queued_notifications(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Capture notification ids instead of sending them to a real Celery broker."""
+    queued_ids: list[int] = []
+    monkeypatch.setattr(notification_service, "enqueue_notification", queued_ids.append)
+    return queued_ids
 
 
 @pytest.fixture
