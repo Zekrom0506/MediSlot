@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import get_settings
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError, PermissionDeniedError
+from app.core.metrics import BOOKING_CONFLICTS, BOOKINGS_CANCELLED, BOOKINGS_CREATED
 from app.core.timezones import local_day_bounds_utc, now_utc, today_local
 from app.models import Booking, Doctor, Slot, User
 from app.models.enums import BookingStatus, NotificationType, SlotStatus
@@ -24,6 +25,7 @@ SLOT_TAKEN_MESSAGE = "Sorry, this slot was just booked. Please choose another sl
 
 
 def slot_taken_error() -> ConflictError:
+    BOOKING_CONFLICTS.inc()
     return ConflictError("SLOT_ALREADY_BOOKED", SLOT_TAKEN_MESSAGE)
 
 
@@ -117,6 +119,7 @@ def book_slot(db: Session, patient: User, slot_id: int, reason_for_visit: str | 
     """Book a slot for a patient. Exactly one of many concurrent requests can win."""
     booking = reserve_slot(db, patient, slot_id, reason_for_visit)
     commit_or_slot_taken(db)
+    BOOKINGS_CREATED.inc()
     # Only after the commit: invalidating earlier could let a reader re-cache the old state.
     cache_service.invalidate_slot_day(booking.slot.doctor_id, booking.slot.start_time)
     notification_service.notify_booking(db, booking.id, NotificationType.CONFIRMATION)
@@ -142,6 +145,7 @@ def cancel_booking(db: Session, patient: User, booking_id: int) -> Booking:
     booking.cancelled_at = now_utc()
     slot.status = SlotStatus.AVAILABLE.value
     db.commit()
+    BOOKINGS_CANCELLED.inc()
     cache_service.invalidate_slot_day(slot.doctor_id, slot.start_time)
     notification_service.notify_booking(db, booking.id, NotificationType.CANCELLATION)
     return booking

@@ -13,6 +13,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ConflictError
+from app.core.metrics import BOOKINGS_CREATED
 from app.core.timezones import now_utc
 from app.models import IdempotencyKey, User
 from app.models.enums import NotificationType
@@ -73,6 +74,7 @@ def book_with_idempotency_key(
         check_same_request(saved, patient, slot_id)
         return saved.response_status_code, saved.response_body, True
 
+    BOOKINGS_CREATED.inc()
     cache_service.invalidate_slot_day(booking.slot.doctor_id, booking.slot.start_time)
     notification_service.notify_booking(db, booking.id, NotificationType.CONFIRMATION)
     return 201, response_body, False
