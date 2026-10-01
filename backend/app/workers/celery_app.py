@@ -1,7 +1,10 @@
-from celery import Celery
+from typing import Any
+
+from celery import Celery, signals
 from celery.schedules import crontab
 
 from app.core.config import get_settings
+from app.core.logging_config import setup_logging
 
 settings = get_settings()
 
@@ -30,3 +33,9 @@ celery_app.conf.update(
         },
     },
 )
+
+
+@signals.setup_logging.connect
+def use_json_logging(**kwargs: Any) -> None:
+    """Make the worker and beat log in the same JSON format as the API."""
+    setup_logging(settings.log_level)

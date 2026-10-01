@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     app_name: str = "MediSlot"
     environment: str = "development"
+    log_level: str = "INFO"
 
     database_url: str = "postgresql+psycopg://medislot:medislot@localhost:5432/medislot"
     database_pool_size: int = 20
