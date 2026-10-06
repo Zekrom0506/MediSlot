@@ -61,6 +61,13 @@ services:
       - "8025:8025"
       - "1025:1025"
 
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
   prometheus:
     image: prom/prometheus:v2.55.1
     volumes:
