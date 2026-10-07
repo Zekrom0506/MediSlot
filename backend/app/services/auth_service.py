@@ -28,13 +28,15 @@ def find_user_by_email(db: Session, email: str) -> User | None:
 
 def register_patient(db: Session, request: RegisterRequest) -> User:
     """Create a new patient account. Doctors and admins are created by admins only."""
+    # Hash first, so no database connection is held during the slow bcrypt call.
+    hashed_password = hash_password(request.password)
     if find_user_by_email(db, request.email) is not None:
         raise ConflictError("EMAIL_ALREADY_REGISTERED", "An account with this email already exists.")
 
     user = User(
         full_name=request.full_name.strip(),
         email=request.email.lower(),
-        hashed_password=hash_password(request.password),
+        hashed_password=hashed_password,
         role=UserRole.PATIENT.value,
         phone_number=request.phone_number,
     )
@@ -55,6 +57,9 @@ def issue_tokens(user: User) -> TokenResponse:
 def login(db: Session, email: str, password: str) -> TokenResponse:
     """Check credentials and return tokens."""
     user = find_user_by_email(db, email)
+    # Give the database connection back before the slow bcrypt check (~0.25s of CPU).
+    # Holding it would let a burst of logins use up the whole connection pool.
+    db.commit()
     if user is None:
         verify_password(password, DUMMY_PASSWORD_HASH)
         raise AuthenticationError("INVALID_CREDENTIALS", "Incorrect email or password.")
