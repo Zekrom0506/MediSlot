@@ -51,13 +51,13 @@ def test_request_log_line_is_json_with_request_id(
     client: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.INFO, logger="app.request"):
-        client.get("/health", headers={"X-Request-ID": "trace-me-42"})
+        client.get("/", headers={"X-Request-ID": "trace-me-42"})
 
     finished = [record for record in caplog.records if record.getMessage() == "Request finished"][0]
     log_line = json.loads(JsonFormatter().format(finished))
     assert log_line["request_id"] == "trace-me-42"
     assert log_line["status_code"] == 200
-    assert log_line["path"] == "/health"
+    assert log_line["path"] == "/"
     assert "duration_ms" in log_line
 
 
@@ -111,3 +111,9 @@ def test_unexpected_errors_hide_internal_details() -> None:
         "error": {"code": "INTERNAL_ERROR", "message": "Something went wrong. Please try again later."}
     }
     assert "hunter2" not in response.text
+
+
+def test_health_checks_are_not_logged(client: TestClient, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO, logger="app.request"):
+        client.get("/health")
+    assert "Request finished" not in caplog.text
