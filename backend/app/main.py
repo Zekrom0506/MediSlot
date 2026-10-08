@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api import admin, auth, bookings, doctor_portal, doctors, health
+from app.core.concurrency import ConcurrencyLimitMiddleware
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging_config import setup_logging
@@ -13,6 +14,10 @@ setup_logging(settings.log_level)
 app = FastAPI(title=settings.app_name, version="1.0.0")
 register_error_handlers(app)
 app.add_middleware(RequestContextMiddleware)
+app.add_middleware(
+    ConcurrencyLimitMiddleware,
+    max_requests=settings.database_pool_size + settings.database_max_overflow,
+)
 
 app.include_router(health.router)
 app.include_router(auth.router)
