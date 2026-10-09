@@ -1,0 +1,40 @@
+# Production overrides, used together with the main file:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Only the frontend (which also proxies /api) is reachable from outside, and only
+# from the host's own Nginx. Databases and dashboards stay on the private network.
+services:
+  postgres:
+    ports: !reset []
+    restart: unless-stopped
+
+  redis:
+    ports: !reset []
+    restart: unless-stopped
+
+  api:
+    ports: !reset []
+    restart: unless-stopped
+
+  worker:
+    restart: unless-stopped
+
+  beat:
+    restart: unless-stopped
+
+  mailpit:
+    # Real emails go through the SMTP provider set in .env, so Mailpit is not started.
+    profiles: ["dev"]
+
+  frontend:
+    ports: !reset ["127.0.0.1:3000:80"]
+    restart: unless-stopped
+
+  prometheus:
+    ports: !reset []
+    restart: unless-stopped
+
+  grafana:
+    # Reach it through an SSH tunnel: ssh -L 3001:localhost:3001 ubuntu@your-server
+    ports: !reset ["127.0.0.1:3001:3000"]
+    restart: unless-stopped
