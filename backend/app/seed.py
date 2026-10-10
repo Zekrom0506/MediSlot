@@ -6,7 +6,7 @@ Running it twice is safe: it stops early if the demo admin already exists.
 
 import logging
 import random
-from datetime import time
+from datetime import time, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -14,8 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.core.security import hash_password
-from app.models import Clinic, Doctor, User, WeeklySchedule
-from app.models.enums import UserRole
+from app.core.timezones import local_to_utc, today_local
+from app.models import Booking, Clinic, Doctor, Slot, User, WeeklySchedule
+from app.models.enums import BookingStatus, SlotStatus, UserRole
 from app.services import slot_service
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,46 @@ def create_patients(session: Session, password_hash: str) -> list[User]:
     return patients
 
 
+def create_past_appointments(session: Session, doctors: list[Doctor], patients: list[User]) -> None:
+    """Two weeks of history, so the admin statistics have something to show."""
+    outcomes = [BookingStatus.COMPLETED] * 7 + [BookingStatus.NO_SHOW] + [BookingStatus.CANCELLED] * 2
+    for days_ago in range(1, 15):
+        day = today_local() - timedelta(days=days_ago)
+        for doctor in random.sample(doctors, 4):
+            for hour in random.sample([9, 10, 11, 12], random.randint(1, 3)):
+                start_time = local_to_utc(day, time(hour, 0))
+                slot = Slot(
+                    doctor_id=doctor.id,
+                    start_time=start_time,
+                    end_time=start_time + timedelta(minutes=doctor.appointment_length_minutes),
+                    status=SlotStatus.BOOKED.value,
+                )
+                session.add(slot)
+                session.flush()
+                outcome = random.choice(outcomes)
+                if outcome == BookingStatus.CANCELLED:
+                    slot.status = SlotStatus.AVAILABLE.value
+                session.add(
+                    Booking(
+                        patient_id=random.choice(patients).id,
+                        slot_id=slot.id,
+                        status=outcome.value,
+                        reason_for_visit="Routine consultation",
+                        created_at=start_time - timedelta(days=random.randint(1, 3)),
+                    )
+                )
+    session.commit()
+
+
+def create_upcoming_bookings(session: Session, patients: list[User], count: int = 40) -> None:
+    """Book some future slots so doctors see a realistic schedule."""
+    free_slots = list(session.scalars(select(Slot).where(Slot.status == SlotStatus.AVAILABLE.value)))
+    for slot in random.sample(free_slots, min(count, len(free_slots))):
+        slot.status = SlotStatus.BOOKED.value
+        session.add(Booking(patient_id=random.choice(patients).id, slot_id=slot.id, status="confirmed"))
+    session.commit()
+
+
 def seed(session: Session) -> bool:
     """Insert all demo data. Returns False if the data was already there."""
     already_seeded = session.scalar(select(User).where(User.email == DEMO_ADMIN_EMAIL))
@@ -149,11 +190,13 @@ def seed(session: Session) -> bool:
     clinics = create_clinics(session)
     doctors = create_doctors(session, clinics, password_hash)
     create_weekly_schedules(session, doctors)
-    create_patients(session, password_hash)
+    patients = create_patients(session, password_hash)
     session.commit()
 
     for doctor in doctors:
         slot_service.generate_slots_for_doctor(session, doctor)
+    create_past_appointments(session, doctors, patients)
+    create_upcoming_bookings(session, patients)
     return True
 
 
