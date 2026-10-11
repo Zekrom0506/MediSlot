@@ -47,6 +47,7 @@ def remove_slots_outside_schedule(db: Session, doctor: Doctor, entries: list[Sch
         .where(Slot.doctor_id == doctor.id)
         .where(Slot.status == SlotStatus.AVAILABLE.value)
         .where(Slot.start_time > now_utc())
+        .order_by(Slot.id)
         .with_for_update()
     )
     for slot in future_free_slots:
