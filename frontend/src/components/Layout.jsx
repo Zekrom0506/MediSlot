@@ -17,6 +17,18 @@ function navigationLinks(role) {
   return [{ to: "/", label: "Find a doctor" }];
 }
 
+// Drawn inline (same design as public/favicon.svg) so the header never depends
+// on a separate image request that could fail or be cached badly.
+function Logo() {
+  return (
+    <svg viewBox="0 0 32 32" className="h-7 w-7 shrink-0" aria-hidden="true">
+      <rect width="32" height="32" rx="8" className="fill-brand" />
+      <rect x="13" y="7" width="6" height="18" rx="1.5" fill="#fff" />
+      <rect x="7" y="13" width="18" height="6" rx="1.5" fill="#fff" />
+    </svg>
+  );
+}
+
 export default function Layout() {
   const { user, logOut } = useAuth();
   const links = navigationLinks(user?.role);
@@ -26,7 +38,7 @@ export default function Layout() {
       <header className="border-b border-line bg-white">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <Link to="/" className="flex items-center gap-2 text-lg font-bold">
-            <img src="/favicon.svg" alt="" className="h-7 w-7" />
+            <Logo />
             MediSlot
           </Link>
           <nav className="flex flex-wrap items-center gap-1 text-sm">

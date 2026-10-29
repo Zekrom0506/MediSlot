@@ -225,17 +225,29 @@ What should not be copied: **Celery Beat** must run exactly once, or every remin
 
 ## Screenshots
 
-> **Screenshot placeholder:** doctor search (`docs/screenshots/search.png`)
+**Find a doctor** by specialty, city and the day you are free.
 
-> **Screenshot placeholder:** doctor profile with free times (`docs/screenshots/doctor-profile.png`)
+![Doctor search](docs/screenshots/search.png)
 
-> **Screenshot placeholder:** booking confirmed (`docs/screenshots/booking-confirmed.png`)
+**Doctor profile**: free times for each day, grouped into morning, afternoon and evening.
 
-> **Screenshot placeholder:** doctor dashboard (`docs/screenshots/doctor-dashboard.png`)
+![Doctor profile with free times](docs/screenshots/doctor-profile.png)
 
-> **Screenshot placeholder:** admin dashboard (`docs/screenshots/admin-dashboard.png`)
+**Booking confirmed**, with the booking reference. The confirmation email is sent in the background.
 
-> **Screenshot placeholder:** Grafana dashboard during the load test (`docs/screenshots/grafana.png`)
+![Booking confirmed](docs/screenshots/booking-confirmed.png)
+
+**Doctor dashboard**: today's and upcoming appointments, time off and weekly hours.
+
+![Doctor dashboard](docs/screenshots/doctor-dashboard.png)
+
+**Admin dashboard**: bookings per day, cancellation and no-show rates, busiest doctors, clinics and doctors.
+
+![Admin dashboard](docs/screenshots/admin-dashboard.png)
+
+**Grafana** during a load test: requests per second, response times and bookings per minute.
+
+![Grafana dashboard during a load test](docs/screenshots/grafana.png)
 
 ## API overview
 
