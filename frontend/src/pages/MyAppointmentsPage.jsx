@@ -14,7 +14,15 @@ const STATUS_LABELS = {
   cancelled: "Cancelled",
   completed: "Completed",
   no_show: "Missed",
+  rescheduled: "Rescheduled",
 };
+
+function statusLabel(booking) {
+  if (booking.status === "cancelled" && booking.cancelled_by === "clinic") {
+    return "Cancelled by the clinic";
+  }
+  return STATUS_LABELS[booking.status];
+}
 
 export default function MyAppointmentsPage() {
   const [scope, setScope] = useState("upcoming");
@@ -133,7 +141,7 @@ function BookingRow({ booking, onCancel, onReschedule }) {
         <p className="text-sm text-muted">
           {booking.doctor.specialty}, {booking.doctor.clinic_name}, {booking.doctor.city}
         </p>
-        {!isActive && <p className="mt-1 text-sm font-medium text-muted">{STATUS_LABELS[booking.status]}</p>}
+        {!isActive && <p className="mt-1 text-sm font-medium text-muted">{statusLabel(booking)}</p>}
       </div>
       {isActive && (
         <div className="flex items-center gap-2">

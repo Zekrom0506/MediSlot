@@ -129,10 +129,9 @@ def test_invalid_key_format_is_rejected(client: TestClient, db: Session) -> None
 
 
 def test_delete_expired_keys_only_removes_old_ones(client: TestClient, db: Session) -> None:
-    doctor = make_doctor(db)
     patient = make_user(db)
-    old_slot = make_slot(db, doctor, starts_in=timedelta(days=1))
-    new_slot = make_slot(db, doctor, starts_in=timedelta(days=2))
+    old_slot = make_slot(db, make_doctor(db), starts_in=timedelta(days=1))
+    new_slot = make_slot(db, make_doctor(db), starts_in=timedelta(days=2))
     client.post(
         "/api/bookings", json={"slot_id": old_slot.id}, headers=headers_with_key(patient, "old-key-0001")
     )

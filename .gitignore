@@ -20,3 +20,11 @@ dist/
 .vscode/
 .idea/
 .DS_Store
+
+# Local git backups
+*.bundle
+
+# Raw load test output (the scale-report.md summary is kept)
+load_tests/results/*.csv
+load_tests/results/*.json
+load_tests/results/*.log

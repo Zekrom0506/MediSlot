@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Header, status
 from fastapi.responses import JSONResponse
 
-from app.api.deps import DbSession, PatientUser, RateLimitedPatient
+from app.api.deps import DbSession, PatientUser, limit_booking_attempts
 from app.schemas.booking import BookingCreate, BookingResponse, RescheduleRequest
 from app.services import booking_service, idempotency_service
 
@@ -18,7 +18,7 @@ IdempotencyKeyHeader = Annotated[
 @router.post("", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
 def create_booking(
     request: BookingCreate,
-    current_user: RateLimitedPatient,
+    current_user: PatientUser,
     db: DbSession,
     idempotency_key: IdempotencyKeyHeader = None,
 ) -> BookingResponse | JSONResponse:
@@ -26,7 +26,16 @@ def create_booking(
 
     Send an Idempotency-Key header to make retries safe: repeating the request
     with the same key returns the first response instead of booking twice.
+    A retry that is answered from the saved response does not count towards
+    the booking rate limit, so a flaky connection cannot lock a patient out.
     """
+    is_known_retry = (
+        idempotency_key is not None
+        and idempotency_service.find_saved_response(db, idempotency_key) is not None
+    )
+    if not is_known_retry:
+        limit_booking_attempts(current_user)
+
     if idempotency_key is None:
         booking = booking_service.book_slot(db, current_user, request.slot_id, request.reason_for_visit)
         booking = booking_service.get_booking_for_patient(db, current_user, booking.id)

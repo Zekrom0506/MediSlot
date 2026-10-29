@@ -88,3 +88,14 @@ def record_outcome(
     doctor = doctor_service.get_doctor_for_user(db, current_user)
     booking = booking_service.record_appointment_outcome(db, doctor, booking_id, request.status)
     return DoctorAppointmentResponse.from_booking(booking)
+
+
+@router.post("/appointments/{booking_id}/cancel", response_model=DoctorAppointmentResponse)
+def cancel_appointment(booking_id: int, current_user: DoctorUser, db: DbSession) -> DoctorAppointmentResponse:
+    """Cancel an upcoming appointment (e.g. the doctor is unwell).
+
+    The slot is blocked and the patient is emailed.
+    """
+    doctor = doctor_service.get_doctor_for_user(db, current_user)
+    booking = booking_service.cancel_appointment_by_doctor(db, doctor, booking_id)
+    return DoctorAppointmentResponse.from_booking(booking)

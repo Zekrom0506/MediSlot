@@ -40,6 +40,8 @@ export const rescheduleBooking = (bookingId, newSlotId) =>
 // Doctor portal
 export const fetchMyDoctorProfile = () => apiRequest("/api/doctor/me");
 export const fetchAppointments = (scope) => apiRequest(`/api/doctor/appointments?scope=${scope}`);
+export const cancelAppointment = (bookingId) =>
+  apiRequest(`/api/doctor/appointments/${bookingId}/cancel`, { method: "POST" });
 export const recordOutcome = (bookingId, status) =>
   apiRequest(`/api/doctor/appointments/${bookingId}`, { method: "PATCH", body: { status } });
 export const fetchSchedule = () => apiRequest("/api/doctor/schedule");

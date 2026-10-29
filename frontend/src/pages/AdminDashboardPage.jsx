@@ -141,6 +141,12 @@ function ClinicsSection() {
   }
 
   async function toggleActive(clinic) {
+    if (
+      clinic.is_active &&
+      !window.confirm(`Deactivate ${clinic.name}? Their upcoming appointments will be cancelled and patients emailed.`)
+    ) {
+      return;
+    }
     setError(null);
     try {
       await api.updateClinic(clinic.id, { is_active: !clinic.is_active });
@@ -224,6 +230,12 @@ function DoctorsSection() {
   }, [loadDoctors]);
 
   async function toggleActive(doctor) {
+    if (
+      doctor.is_active &&
+      !window.confirm(`Deactivate ${doctor.full_name}? Their upcoming appointments will be cancelled and patients emailed.`)
+    ) {
+      return;
+    }
     setError(null);
     try {
       await api.updateDoctor(doctor.id, { is_active: !doctor.is_active });

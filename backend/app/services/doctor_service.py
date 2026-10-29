@@ -3,13 +3,13 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
+from app.core.errors import BusinessRuleError, ConflictError, NotFoundError, PermissionDeniedError
 from app.core.security import hash_password
 from app.core.timezones import local_day_bounds_utc, now_utc
 from app.models import Clinic, Doctor, Slot, User
 from app.models.enums import SlotStatus, UserRole
 from app.schemas.doctor import DoctorCreate, DoctorSearchResult, DoctorUpdate, SearchFilters
-from app.services import auth_service, clinic_service
+from app.services import auth_service, booking_service, cache_service, clinic_service, slot_service
 
 
 def get_doctor(db: Session, doctor_id: int) -> Doctor:
@@ -33,6 +33,8 @@ def get_doctor_for_user(db: Session, user: User) -> Doctor:
     doctor = db.scalar(select(Doctor).where(Doctor.user_id == user.id))
     if doctor is None:
         raise NotFoundError("DOCTOR_PROFILE_NOT_FOUND", "No doctor profile is linked to this account.")
+    if not doctor.is_active:
+        raise PermissionDeniedError("DOCTOR_INACTIVE", "This doctor profile has been deactivated.")
     return doctor
 
 
@@ -75,30 +77,62 @@ def create_doctor(db: Session, request: DoctorCreate) -> Doctor:
 
 
 def update_doctor(db: Session, doctor_id: int, request: DoctorUpdate) -> Doctor:
-    """Update profile fields. Name and phone live on the user row."""
-    doctor = get_doctor(db, doctor_id)
-    changes = request.model_dump(exclude_unset=True)
+    """Update profile fields. Name and phone live on the user row.
 
-    if "clinic_id" in changes:
-        clinic_service.get_clinic(db, changes["clinic_id"])
+    Turning is_active off goes through deactivate_doctor(), so upcoming
+    appointments are cancelled and patients are told, however it is requested.
+    A new visit length replaces the doctor's free future slots with new ones.
+    """
+    changes = request.model_dump(exclude_unset=True)
+    is_active = changes.pop("is_active", None)
+    if is_active is False:
+        deactivate_doctor(db, doctor_id)
+
+    doctor = get_doctor(db, doctor_id)
+    if changes.get("clinic_id") is not None:
+        clinic = clinic_service.get_clinic(db, changes["clinic_id"])
+        if not clinic.is_active:
+            raise BusinessRuleError("CLINIC_INACTIVE", "Doctors cannot be moved to an inactive clinic.")
     if "specialty" in changes and changes["specialty"] is not None:
         changes["specialty"] = changes["specialty"].strip().title()
+
+    new_length = changes.get("appointment_length_minutes")
+    length_changed = new_length is not None and new_length != doctor.appointment_length_minutes
 
     for field_name, value in changes.items():
         if field_name in ("full_name", "phone_number"):
             setattr(doctor.user, field_name, value)
         else:
             setattr(doctor, field_name, value)
+    if is_active is True:
+        doctor.is_active = True
+    if length_changed:
+        # Old-length free slots go; booked ones stay, and new slots are fitted around them.
+        slot_service.retire_free_future_slots(db, doctor, keep=lambda slot: False)
     db.commit()
+
+    if length_changed or is_active is True:
+        cache_service.invalidate_doctor(doctor.id)
+        slot_service.generate_slots_for_doctor(db, doctor)
     db.refresh(doctor)
     return doctor
 
 
 def deactivate_doctor(db: Session, doctor_id: int) -> Doctor:
-    """Hide a doctor from search and stop new bookings. Existing bookings are kept."""
-    doctor = get_doctor(db, doctor_id)
+    """Hide a doctor and stop new bookings. Their upcoming appointments are cancelled.
+
+    Past appointments are kept for history. Each affected patient gets an email.
+    """
+    doctor = db.scalar(select(Doctor).where(Doctor.id == doctor_id).with_for_update(of=Doctor))
+    if doctor is None:
+        raise NotFoundError("DOCTOR_NOT_FOUND", "Doctor not found.")
     doctor.is_active = False
+    cancelled_ids = booking_service.cancel_bookings_by_clinic(
+        db, booking_service.future_confirmed_bookings(db, [doctor.id])
+    )
     db.commit()
+    cache_service.invalidate_doctor(doctor.id)
+    booking_service.notify_clinic_cancellations(db, cancelled_ids)
     return doctor
 
 

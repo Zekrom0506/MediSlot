@@ -17,11 +17,18 @@ def safe_rate(part: int, whole: int) -> float:
     return round(part / whole, 3)
 
 
+# A reschedule leaves the old booking as "rescheduled" and creates a new one.
+# Leaving the old ones out means a moved appointment counts once, not as a
+# booking plus a cancellation.
+COUNTED = Booking.status != BookingStatus.RESCHEDULED.value
+
+
 def count_bookings_by_status(db: Session, period_start: datetime) -> dict[str, int]:
-    """{status: count} for bookings created since period_start."""
+    """{status: count} for bookings created since period_start (reschedules counted once)."""
     query = (
         select(Booking.status, func.count(Booking.id))
         .where(Booking.created_at >= period_start)
+        .where(COUNTED)
         .group_by(Booking.status)
     )
     counts = {}
@@ -40,6 +47,7 @@ def bookings_per_day(db: Session, first_day: date, number_of_days: int) -> list[
     query = (
         select(local_day, func.count(Booking.id))
         .where(Booking.created_at >= period_start)
+        .where(COUNTED)
         .group_by(local_day)
     )
     counts_by_day = {}
@@ -62,7 +70,7 @@ def busiest_doctors(db: Session, period_start: datetime, limit: int = 5) -> list
         .join(Booking, Booking.slot_id == Slot.id)
         .join(User, User.id == Doctor.user_id)
         .where(Booking.created_at >= period_start)
-        .where(Booking.status != BookingStatus.CANCELLED.value)
+        .where(Booking.status.not_in([BookingStatus.CANCELLED.value, BookingStatus.RESCHEDULED.value]))
         .group_by(Doctor.id, User.full_name, Doctor.specialty)
         .order_by(booking_count.desc(), Doctor.id)
         .limit(limit)

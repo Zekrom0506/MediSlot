@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, text
+from sqlalchemy.dialects.postgresql import ExcludeConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, enum_column
@@ -12,8 +13,19 @@ class Slot(Base):
     """A single bookable time window for one doctor."""
 
     __tablename__ = "slots"
-    # Lets the nightly generator run any number of times without creating duplicates.
-    __table_args__ = (UniqueConstraint("doctor_id", "start_time", name="uq_slots_doctor_start_time"),)
+    __table_args__ = (
+        # A doctor can never have two live slots whose times overlap, even if the
+        # visit length or weekly schedule changes. This also lets the nightly
+        # generator run any number of times: ON CONFLICT DO NOTHING skips slots
+        # that already exist or would overlap one. Needs the btree_gist extension.
+        ExcludeConstraint(
+            ("doctor_id", "="),
+            (text("tstzrange(start_time, end_time)"), "&&"),
+            name="ex_slots_no_overlap",
+            using="gist",
+            where=text("status <> 'retired'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     doctor_id: Mapped[int] = mapped_column(ForeignKey("doctors.id"))

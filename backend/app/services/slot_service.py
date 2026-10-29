@@ -1,13 +1,14 @@
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import BusinessRuleError, ConflictError, NotFoundError
 from app.core.timezones import local_day_bounds_utc, local_to_utc, now_utc, today_local
-from app.models import Doctor, Slot, WeeklySchedule
+from app.models import Booking, Doctor, Slot, WeeklySchedule
 from app.models.enums import SlotStatus
 from app.schemas.slot import SlotResponse
 from app.services import cache_service
@@ -45,9 +46,10 @@ def generate_slots_for_doctor(
 ) -> int:
     """Create missing slots for the coming days from the doctor's weekly schedule.
 
-    Safe to run any number of times: ON CONFLICT DO NOTHING on the
-    (doctor_id, start_time) unique constraint skips slots that already exist,
-    including ones that were booked or blocked. Returns how many were created.
+    Safe to run any number of times: ON CONFLICT DO NOTHING on the no-overlap
+    exclusion constraint skips slots that already exist or would overlap a live
+    one (booked, blocked, or left over from an older visit length).
+    Returns how many were created.
     """
     if start_date is None:
         start_date = today_local()
@@ -80,7 +82,7 @@ def generate_slots_for_doctor(
         return 0
 
     statement = insert(Slot).values(new_rows)
-    statement = statement.on_conflict_do_nothing(constraint="uq_slots_doctor_start_time")
+    statement = statement.on_conflict_do_nothing()
     # RETURNING only gives back the rows that were really inserted, so we can count them.
     created_ids = list(db.scalars(statement.returning(Slot.id)))
     db.commit()
@@ -129,11 +131,12 @@ def list_available_slots_cached(db: Session, doctor_id: int, local_date: date) -
 
 
 def list_all_slots_for_day(db: Session, doctor_id: int, local_date: date) -> list[Slot]:
-    """Every slot (free, booked or blocked) for the doctor's own calendar view."""
+    """Every live slot (free, booked or blocked) for the doctor's own calendar view."""
     day_start, day_end = local_day_bounds_utc(local_date)
     query = (
         select(Slot)
         .where(Slot.doctor_id == doctor_id)
+        .where(Slot.status != SlotStatus.RETIRED.value)
         .where(Slot.start_time >= day_start)
         .where(Slot.start_time < day_end)
         .order_by(Slot.start_time)
@@ -199,3 +202,29 @@ def block_day(db: Session, doctor: Doctor, local_date: date) -> tuple[int, int]:
     db.commit()
     cache_service.invalidate_slot_day(doctor.id, day_start)
     return blocked_count, booked_count
+
+
+def retire_free_future_slots(db: Session, doctor: Doctor, keep: Callable[[Slot], bool]) -> None:
+    """Take future free slots out of use, except those `keep` says to keep.
+
+    Used when the weekly schedule or visit length changes. Slots that never had
+    a booking are deleted. Slots that had one (for example a cancelled booking)
+    must stay for history, so they are retired instead. Booked and blocked slots
+    are never touched. Does not commit.
+    """
+    future_free_slots = db.scalars(
+        select(Slot)
+        .where(Slot.doctor_id == doctor.id)
+        .where(Slot.status == SlotStatus.AVAILABLE.value)
+        .where(Slot.start_time > now_utc())
+        .order_by(Slot.id)
+        .with_for_update()
+    )
+    for slot in future_free_slots:
+        if keep(slot):
+            continue
+        has_booking_history = db.scalar(select(exists().where(Booking.slot_id == slot.id)))
+        if has_booking_history:
+            slot.status = SlotStatus.RETIRED.value
+        else:
+            db.delete(slot)

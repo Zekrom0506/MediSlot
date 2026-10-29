@@ -1,5 +1,6 @@
 import json
 import logging
+import socket
 import sys
 
 import pytest
@@ -37,6 +38,11 @@ def test_ready_reports_redis_down(client: TestClient, monkeypatch: pytest.Monkey
 def test_every_response_has_a_request_id(client: TestClient) -> None:
     response = client.get("/health")
     assert len(response.headers["X-Request-ID"]) == 32
+
+
+def test_every_response_names_the_instance_that_served_it(client: TestClient) -> None:
+    response = client.get("/health")
+    assert response.headers["X-Served-By"] == socket.gethostname()
 
 
 def test_incoming_request_id_is_reused_if_safe(client: TestClient) -> None:

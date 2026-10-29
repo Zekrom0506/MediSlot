@@ -1,4 +1,3 @@
-import logging
 from datetime import timedelta
 from email.message import EmailMessage
 
@@ -12,7 +11,6 @@ from app.models.enums import NotificationStatus
 from app.services import email_sender as email_sender_module
 from app.services import notification_service
 from app.services.email_sender import EmailSender
-from app.services.sms_sender import LoggingSmsSender, get_sms_sender
 from app.workers import tasks
 from tests.factories import auth_headers, make_doctor, make_slot, make_user
 
@@ -44,27 +42,14 @@ def notifications(db: Session) -> list[Notification]:
     return list(db.scalars(select(Notification).order_by(Notification.id)))
 
 
-def test_booking_queues_email_and_sms(
+def test_booking_queues_one_confirmation_email(
     client: TestClient, db: Session, queued_notifications: list[int]
 ) -> None:
     book(client, db)
 
     rows = notifications(db)
-    assert [(row.type, row.channel, row.status) for row in rows] == [
-        ("confirmation", "email", "pending"),
-        ("confirmation", "sms", "pending"),
-    ]
-    assert queued_notifications == [rows[0].id, rows[1].id]
-
-
-def test_patient_without_phone_only_gets_email(client: TestClient, db: Session) -> None:
-    patient = make_user(db)
-    patient.phone_number = None
-    db.commit()
-
-    book(client, db, patient)
-
-    assert [row.channel for row in notifications(db)] == ["email"]
+    assert [(row.type, row.status) for row in rows] == [("confirmation", "pending")]
+    assert queued_notifications == [rows[0].id]
 
 
 def test_cancellation_is_notified(client: TestClient, db: Session) -> None:
@@ -73,7 +58,7 @@ def test_cancellation_is_notified(client: TestClient, db: Session) -> None:
     client.post(f"/api/bookings/{booking_id}/cancel", headers=auth_headers(patient))
 
     types = [row.type for row in notifications(db)]
-    assert types.count("cancellation") == 2
+    assert types.count("cancellation") == 1
 
 
 def test_queue_failure_does_not_break_booking(
@@ -91,7 +76,7 @@ def test_deliver_sends_email_with_clinic_time(client: TestClient, db: Session) -
     email_row = notifications(db)[0]
     sender = RecordingEmailSender()
 
-    notification_service.deliver_notification(db, email_row.id, sender, LoggingSmsSender())
+    notification_service.deliver_notification(db, email_row.id, sender)
 
     to_address, subject, body = sender.sent[0]
     assert subject == "Your MediSlot appointment is confirmed"
@@ -103,7 +88,7 @@ def test_deliver_sends_email_with_clinic_time(client: TestClient, db: Session) -
     assert delivered.sent_at is not None
 
     # Delivering an already-sent notification again does nothing.
-    notification_service.deliver_notification(db, email_row.id, sender, LoggingSmsSender())
+    notification_service.deliver_notification(db, email_row.id, sender)
     assert len(sender.sent) == 1
 
 
@@ -112,7 +97,7 @@ def test_deliver_records_failed_attempt(client: TestClient, db: Session) -> None
     email_row = notifications(db)[0]
 
     with pytest.raises(ConnectionError):
-        notification_service.deliver_notification(db, email_row.id, BrokenEmailSender(), LoggingSmsSender())
+        notification_service.deliver_notification(db, email_row.id, BrokenEmailSender())
 
     failed = notifications(db)[0]
     assert failed.attempts == 1
@@ -134,17 +119,18 @@ def test_task_retries_three_times_then_marks_failed(
     assert final.status == NotificationStatus.FAILED.value
 
 
-def test_task_sends_sms_through_sender(
-    client: TestClient, db: Session, caplog: pytest.LogCaptureFixture
+def test_task_sends_email_through_sender(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     book(client, db)
-    sms_row = notifications(db)[1]
+    email_row = notifications(db)[0]
+    sender = RecordingEmailSender()
+    monkeypatch.setattr(tasks, "EmailSender", lambda: sender)
 
-    with caplog.at_level(logging.INFO):
-        tasks.send_notification.apply(args=[sms_row.id])
+    tasks.send_notification.apply(args=[email_row.id])
 
-    assert notifications(db)[1].status == NotificationStatus.SENT.value
-    assert "SMS sent" in caplog.text
+    assert notifications(db)[0].status == NotificationStatus.SENT.value
+    assert len(sender.sent) == 1
 
 
 def test_retry_delays_grow_exponentially() -> None:
@@ -170,19 +156,9 @@ def test_reminder_message_text(client: TestClient, db: Session) -> None:
     reminder = [row for row in notifications(db) if row.type == "reminder"][0]
     sender = RecordingEmailSender()
 
-    notification_service.deliver_notification(db, reminder.id, sender, LoggingSmsSender())
+    notification_service.deliver_notification(db, reminder.id, sender)
 
     assert sender.sent[0][1].startswith("Reminder")
-
-
-def test_get_sms_sender_rejects_unknown_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    assert isinstance(get_sms_sender(), LoggingSmsSender)
-    monkeypatch.setattr(
-        "app.services.sms_sender.get_settings",
-        lambda: type("FakeSettings", (), {"sms_provider": "carrier-pigeon"}),
-    )
-    with pytest.raises(ValueError):
-        get_sms_sender()
 
 
 def test_email_sender_uses_smtp(monkeypatch: pytest.MonkeyPatch) -> None:

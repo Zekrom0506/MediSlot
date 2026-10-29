@@ -50,3 +50,25 @@ def test_admin_stats(client: TestClient, db: Session) -> None:
 def test_stats_are_admin_only(client: TestClient, db: Session) -> None:
     response = client.get("/api/admin/stats", headers=auth_headers(make_user(db)))
     assert response.status_code == 403
+
+
+def test_a_reschedule_counts_as_one_booking_not_a_cancellation(client: TestClient, db: Session) -> None:
+    admin = make_user(db, role=UserRole.ADMIN)
+    patient = make_user(db)
+    doctor = make_doctor(db)
+    first_slot = make_slot(db, doctor, starts_in=timedelta(days=2))
+    second_slot = make_slot(db, doctor, starts_in=timedelta(days=3))
+    booking = client.post("/api/bookings", json={"slot_id": first_slot.id}, headers=auth_headers(patient))
+    client.post(
+        f"/api/bookings/{booking.json()['id']}/reschedule",
+        json={"new_slot_id": second_slot.id},
+        headers=auth_headers(patient),
+    )
+
+    stats = client.get("/api/admin/stats?days=7", headers=auth_headers(admin)).json()
+
+    assert stats["total_bookings"] == 1
+    assert stats["cancelled_bookings"] == 0
+    assert stats["cancellation_rate"] == 0.0
+    assert stats["bookings_per_day"][-1]["count"] == 1
+    assert stats["busiest_doctors"][0]["booking_count"] == 1

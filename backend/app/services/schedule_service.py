@@ -1,11 +1,10 @@
 from datetime import time
 
-from sqlalchemy import delete, exists, select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.core.timezones import now_utc, to_local
-from app.models import Booking, Doctor, Slot, WeeklySchedule
-from app.models.enums import SlotStatus
+from app.core.timezones import to_local
+from app.models import Doctor, Slot, WeeklySchedule
 from app.schemas.schedule import ScheduleEntry
 from app.services import cache_service, slot_service
 
@@ -36,28 +35,8 @@ def slot_fits_schedule(slot: Slot, entries: list[ScheduleEntry]) -> bool:
 
 
 def remove_slots_outside_schedule(db: Session, doctor: Doctor, entries: list[ScheduleEntry]) -> None:
-    """Remove future free slots that the new schedule no longer covers.
-
-    Slots that never had a booking are deleted. Slots that had one (for example a
-    cancelled booking) must stay for history, so they are blocked instead.
-    Booked slots are never touched.
-    """
-    future_free_slots = db.scalars(
-        select(Slot)
-        .where(Slot.doctor_id == doctor.id)
-        .where(Slot.status == SlotStatus.AVAILABLE.value)
-        .where(Slot.start_time > now_utc())
-        .order_by(Slot.id)
-        .with_for_update()
-    )
-    for slot in future_free_slots:
-        if slot_fits_schedule(slot, entries):
-            continue
-        has_booking_history = db.scalar(select(exists().where(Booking.slot_id == slot.id)))
-        if has_booking_history:
-            slot.status = SlotStatus.BLOCKED.value
-        else:
-            db.delete(slot)
+    """Remove future free slots that the new schedule no longer covers."""
+    slot_service.retire_free_future_slots(db, doctor, keep=lambda slot: slot_fits_schedule(slot, entries))
 
 
 def replace_schedule(db: Session, doctor: Doctor, entries: list[ScheduleEntry]) -> list[WeeklySchedule]:

@@ -50,7 +50,7 @@ export default function RegisterPage() {
             value={form.email} onChange={updateField} autoComplete="email" />
         </div>
         <div>
-          <label htmlFor="phone_number" className="field-label">Mobile number (optional, for SMS reminders)</label>
+          <label htmlFor="phone_number" className="field-label">Mobile number (optional)</label>
           <input id="phone_number" name="phone_number" type="tel" placeholder="+91 98765 43210" className="field-input"
             value={form.phone_number} onChange={updateField} autoComplete="tel" />
         </div>

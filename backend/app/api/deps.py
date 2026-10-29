@@ -66,10 +66,9 @@ DoctorUser = Annotated[User, Depends(require_roles(UserRole.DOCTOR))]
 AdminUser = Annotated[User, Depends(require_roles(UserRole.ADMIN))]
 
 
-def limit_booking_attempts(current_user: PatientUser) -> User:
+def limit_booking_attempts(current_user: User) -> None:
     """At most 5 booking attempts per minute per patient."""
     booking_limiter().hit(str(current_user.id))
-    return current_user
 
 
 def limit_login_attempts(request: Request) -> None:
@@ -78,6 +77,3 @@ def limit_login_attempts(request: Request) -> None:
     if request.client is not None:
         client_ip = request.client.host
     login_limiter().hit(client_ip)
-
-
-RateLimitedPatient = Annotated[User, Depends(limit_booking_attempts)]

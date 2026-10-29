@@ -70,7 +70,6 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('type', sa.Enum('confirmation', 'cancellation', 'reminder', name='notificationtype_values', native_enum=False, create_constraint=True, length=20), nullable=False),
-    sa.Column('channel', sa.Enum('email', 'sms', name='notificationchannel_values', native_enum=False, create_constraint=True, length=20), nullable=False),
     sa.Column('status', sa.Enum('pending', 'sent', 'failed', name='notificationstatus_values', native_enum=False, create_constraint=True, length=20), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('sent_at', sa.DateTime(timezone=True), nullable=True),

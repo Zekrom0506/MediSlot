@@ -96,7 +96,7 @@ def test_changing_schedule_removes_free_slots_outside_it(client: TestClient, db:
     db.expire_all()
     slots_after = slot_service.list_available_slots(db, doctor.id, future_date(1))
     assert len(slots_after) == 2
-    assert db.get(Slot, slot_with_history.id).status == SlotStatus.BLOCKED.value
+    assert db.get(Slot, slot_with_history.id).status == SlotStatus.RETIRED.value
     assert db.get(Slot, deleted_slot_id) is None
 
 

@@ -131,11 +131,12 @@ def test_cannot_cancel_someone_elses_booking_or_twice(client: TestClient, db: Se
 
 
 def test_upcoming_and_past_lists(client: TestClient, db: Session) -> None:
+    # Different doctors: a patient can only have one upcoming visit per doctor.
     doctor = make_doctor(db)
     patient = make_user(db)
-    later_slot = make_slot(db, doctor, starts_in=timedelta(days=3))
-    sooner_slot = make_slot(db, doctor, starts_in=timedelta(days=1))
-    cancelled_slot = make_slot(db, doctor, starts_in=timedelta(days=2))
+    later_slot = make_slot(db, make_doctor(db), starts_in=timedelta(days=3))
+    sooner_slot = make_slot(db, make_doctor(db), starts_in=timedelta(days=1))
+    cancelled_slot = make_slot(db, make_doctor(db), starts_in=timedelta(days=2))
     old_slot = make_slot(db, doctor, starts_in=timedelta(days=-2), status=SlotStatus.BOOKED)
     db.add(Booking(patient_id=patient.id, slot_id=old_slot.id, status=BookingStatus.COMPLETED.value))
     db.commit()

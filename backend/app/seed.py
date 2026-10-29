@@ -12,11 +12,12 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.core.timezones import local_to_utc, today_local
 from app.models import Booking, Clinic, Doctor, Slot, User, WeeklySchedule
-from app.models.enums import BookingStatus, SlotStatus, UserRole
+from app.models.enums import BookingStatus, CancelledBy, SlotStatus, UserRole
 from app.services import slot_service
 
 logger = logging.getLogger(__name__)
@@ -155,24 +156,49 @@ def create_past_appointments(session: Session, doctors: list[Doctor], patients: 
                 outcome = random.choice(outcomes)
                 if outcome == BookingStatus.CANCELLED:
                     slot.status = SlotStatus.AVAILABLE.value
+                booked_at = start_time - timedelta(days=random.randint(1, 3))
+                is_cancelled = outcome == BookingStatus.CANCELLED
                 session.add(
                     Booking(
                         patient_id=random.choice(patients).id,
                         slot_id=slot.id,
                         status=outcome.value,
                         reason_for_visit="Routine consultation",
-                        created_at=start_time - timedelta(days=random.randint(1, 3)),
+                        created_at=booked_at,
+                        cancelled_at=booked_at + timedelta(hours=6) if is_cancelled else None,
+                        cancelled_by=CancelledBy.PATIENT.value if is_cancelled else None,
                     )
                 )
     session.commit()
 
 
 def create_upcoming_bookings(session: Session, patients: list[User], count: int = 40) -> None:
-    """Book some future slots so doctors see a realistic schedule."""
+    """Book some future slots so doctors see a realistic schedule.
+
+    Follows the same rules as real bookings: one upcoming visit per doctor per
+    patient, no two visits at overlapping times, and a cap per patient.
+    """
+    limit = get_settings().max_upcoming_bookings_per_patient
     free_slots = list(session.scalars(select(Slot).where(Slot.status == SlotStatus.AVAILABLE.value)))
-    for slot in random.sample(free_slots, min(count, len(free_slots))):
+    random.shuffle(free_slots)
+    booked_by_patient: dict[int, list[Slot]] = {}
+    created = 0
+    for slot in free_slots:
+        if created == count:
+            break
+        patient = random.choice(patients)
+        taken = booked_by_patient.setdefault(patient.id, [])
+        clashes = any(
+            other.doctor_id == slot.doctor_id
+            or (other.start_time < slot.end_time and slot.start_time < other.end_time)
+            for other in taken
+        )
+        if clashes or len(taken) >= limit:
+            continue
+        taken.append(slot)
         slot.status = SlotStatus.BOOKED.value
-        session.add(Booking(patient_id=random.choice(patients).id, slot_id=slot.id, status="confirmed"))
+        session.add(Booking(patient_id=patient.id, slot_id=slot.id, status=BookingStatus.CONFIRMED.value))
+        created += 1
     session.commit()
 
 

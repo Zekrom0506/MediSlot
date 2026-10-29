@@ -1,11 +1,16 @@
 from datetime import UTC, datetime, time, timedelta
 
+import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.timezones import local_to_utc, to_local
 from app.models import Slot, WeeklySchedule
+from app.models.enums import UserRole
 from app.services import slot_service
-from tests.factories import add_schedule, future_date, make_doctor
+from tests.factories import add_schedule, auth_headers, future_date, make_doctor, make_slot_at, make_user
 
 
 def schedule_block(day_of_week: int, start: time, end: time) -> WeeklySchedule:
@@ -95,3 +100,49 @@ def test_generate_for_all_doctors_skips_inactive_doctors(db: Session) -> None:
     assert total == count_slots(db, active_doctor.id)
     assert total > 0
     assert count_slots(db, inactive_doctor.id) == 0
+
+
+def test_database_refuses_overlapping_live_slots(db: Session) -> None:
+    doctor = make_doctor(db)
+    start = local_to_utc(future_date(2), time(9, 0))
+    make_slot_at(db, doctor, start, length_minutes=30)
+
+    with pytest.raises(IntegrityError):
+        make_slot_at(db, doctor, start + timedelta(minutes=15), length_minutes=30)
+    db.rollback()
+
+    # Back-to-back is fine, and so is the same time for another doctor.
+    make_slot_at(db, doctor, start + timedelta(minutes=30), length_minutes=30)
+    make_slot_at(db, make_doctor(db), start, length_minutes=30)
+
+
+def test_changing_visit_length_never_creates_overlapping_slots(client: TestClient, db: Session) -> None:
+    admin = make_user(db, role=UserRole.ADMIN)
+    doctor = make_doctor(db, appointment_length_minutes=30)
+    day = future_date(2)
+    add_schedule(db, doctor, day.weekday(), time(9, 0), time(11, 0))
+    slot_service.generate_slots_for_doctor(db, doctor)
+    nine_thirty = next(
+        slot
+        for slot in slot_service.list_all_slots_for_day(db, doctor.id, day)
+        if slot.start_time == local_to_utc(day, time(9, 30))
+    )
+    patient_headers = auth_headers(make_user(db))
+    booking = client.post("/api/bookings", json={"slot_id": nine_thirty.id}, headers=patient_headers)
+    assert booking.status_code == 201
+
+    response = client.patch(
+        f"/api/admin/doctors/{doctor.id}",
+        json={"appointment_length_minutes": 20},
+        headers=auth_headers(admin),
+    )
+
+    assert response.status_code == 200
+    db.expire_all()
+    slots = slot_service.list_all_slots_for_day(db, doctor.id, day)
+    for earlier, later in zip(slots, slots[1:], strict=False):
+        assert earlier.end_time <= later.start_time
+    starts = [to_local(slot.start_time).strftime("%H:%M") for slot in slots]
+    # 09:30 (booked, 30 min) is kept; new 20 minute slots fill the gaps around it.
+    assert starts == ["09:00", "09:30", "10:00", "10:20", "10:40"]
+    assert [slot.status for slot in slots].count("booked") == 1

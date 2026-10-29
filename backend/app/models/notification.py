@@ -4,24 +4,21 @@ from sqlalchemy import DateTime, ForeignKey, Integer, Text, UniqueConstraint, fu
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, enum_column
-from app.models.enums import NotificationChannel, NotificationStatus, NotificationType
+from app.models.enums import NotificationStatus, NotificationType
 
 
 class Notification(Base):
-    """An email or SMS we need to send, and whether it went out."""
+    """An email we need to send, and whether it went out."""
 
     __tablename__ = "notifications"
-    # One notification of each kind per booking and channel, so a reminder job
-    # that runs twice cannot send the same reminder twice.
-    __table_args__ = (
-        UniqueConstraint("booking_id", "type", "channel", name="uq_notifications_booking_type_channel"),
-    )
+    # One notification of each kind per booking, so a reminder job that runs
+    # twice cannot send the same reminder twice.
+    __table_args__ = (UniqueConstraint("booking_id", "type", name="uq_notifications_booking_type"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     booking_id: Mapped[int | None] = mapped_column(ForeignKey("bookings.id"), index=True)
     type: Mapped[str] = mapped_column(enum_column(NotificationType))
-    channel: Mapped[str] = mapped_column(enum_column(NotificationChannel))
     status: Mapped[str] = mapped_column(
         enum_column(NotificationStatus), default=NotificationStatus.PENDING.value
     )

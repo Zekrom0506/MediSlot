@@ -1,5 +1,6 @@
 import logging
 import re
+import socket
 import time
 import uuid
 
@@ -11,6 +12,10 @@ from app.core.logging_config import request_id_context
 logger = logging.getLogger("app.request")
 
 REQUEST_ID_HEADER = "X-Request-ID"
+# Which API instance answered. With several copies behind a load balancer this
+# shows that requests really are spread out (the hostname is the container id).
+SERVED_BY_HEADER = "X-Served-By"
+INSTANCE_NAME = socket.gethostname()
 # Accept ids from upstream (e.g. Nginx) only if they look safe to put in logs.
 SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 # Scraped every few seconds by Prometheus and load balancers; logging them is just noise.
@@ -47,7 +52,9 @@ class RequestContextMiddleware:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = message["status"]
-                MutableHeaders(scope=message)[REQUEST_ID_HEADER] = request_id
+                headers = MutableHeaders(scope=message)
+                headers[REQUEST_ID_HEADER] = request_id
+                headers[SERVED_BY_HEADER] = INSTANCE_NAME
             await send(message)
 
         try:

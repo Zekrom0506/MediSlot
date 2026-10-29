@@ -37,6 +37,7 @@ function AppointmentsSection() {
   const [appointments, setAppointments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState("");
 
   const loadAppointments = useCallback(() => {
     setIsLoading(true);
@@ -61,6 +62,25 @@ function AppointmentsSection() {
     }
   }
 
+  async function cancelAppointment(appointment) {
+    const confirmed = window.confirm(
+      `Cancel ${appointment.patient.full_name}'s appointment at ${formatTime(appointment.slot.start_time)}? ` +
+        "They will get an email, and the time will be blocked.",
+    );
+    if (!confirmed) {
+      return;
+    }
+    setError(null);
+    setNotice("");
+    try {
+      await api.cancelAppointment(appointment.id);
+      setNotice(`Appointment cancelled. ${appointment.patient.full_name} has been emailed.`);
+      loadAppointments();
+    } catch (cancelError) {
+      setError(cancelError);
+    }
+  }
+
   return (
     <section>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -74,8 +94,9 @@ function AppointmentsSection() {
           ))}
         </div>
       </div>
-      <div className="mt-3">
+      <div className="mt-3 space-y-2">
         <Alert kind="error" onClose={() => setError(null)}>{friendlyErrorMessage(error)}</Alert>
+        <Alert kind="success" onClose={() => setNotice("")}>{notice}</Alert>
       </div>
       {isLoading ? (
         <Spinner label="Loading appointments" />
@@ -105,6 +126,11 @@ function AppointmentsSection() {
                       Mark no-show
                     </button>
                   </div>
+                )}
+                {appointment.status === "confirmed" && !hasStarted && (
+                  <button type="button" className="button-danger py-2 text-sm" onClick={() => cancelAppointment(appointment)}>
+                    Cancel
+                  </button>
                 )}
                 {appointment.status !== "confirmed" && (
                   <p className="text-sm font-medium text-muted">{appointment.status === "completed" ? "Completed" : "No-show"}</p>
@@ -168,7 +194,7 @@ function SlotsSection() {
       const result = await api.blockDay(selectedDate);
       let message = `Blocked ${result.blocked_count} free slots on ${formatDateString(selectedDate)}.`;
       if (result.booked_count > 0) {
-        message += ` ${result.booked_count} booked appointments were left in place.`;
+        message += ` ${result.booked_count} booked appointments were left in place. Cancel them under Appointments, Upcoming, if needed.`;
       }
       setNotice(message);
       loadSlots();

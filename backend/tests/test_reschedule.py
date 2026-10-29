@@ -45,7 +45,7 @@ def test_reschedule_moves_booking_and_frees_old_slot(client: TestClient, db: Ses
     assert response.json()["slot"]["id"] == new_slot.id
     assert response.json()["id"] != booking_id
     assert confirmed_bookings_for(db, patient.id) == 1
-    assert db.get(Booking, booking_id).status == BookingStatus.CANCELLED.value
+    assert db.get(Booking, booking_id).status == BookingStatus.RESCHEDULED.value
     assert db.get(Slot, old_slot.id).status == SlotStatus.AVAILABLE.value
     assert db.get(Slot, new_slot.id).status == SlotStatus.BOOKED.value
 

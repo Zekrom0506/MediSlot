@@ -5,7 +5,6 @@ from celery import Task
 from app.core.database import SessionLocal
 from app.services import idempotency_service, notification_service, slot_service
 from app.services.email_sender import EmailSender
-from app.services.sms_sender import get_sms_sender
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -24,7 +23,7 @@ def send_notification(self: Task, notification_id: int) -> None:
     """Deliver one notification, retrying with growing delays if it fails."""
     with SessionLocal() as db:
         try:
-            notification_service.deliver_notification(db, notification_id, EmailSender(), get_sms_sender())
+            notification_service.deliver_notification(db, notification_id, EmailSender())
         except Exception as error:
             if self.request.retries >= MAX_DELIVERY_RETRIES:
                 notification_service.mark_failed(db, notification_id)

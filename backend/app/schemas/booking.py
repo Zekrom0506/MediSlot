@@ -41,6 +41,7 @@ class BookingResponse(BaseModel):
     reason_for_visit: str | None
     created_at: datetime
     cancelled_at: datetime | None
+    cancelled_by: str | None
     slot: SlotResponse
     doctor: BookingDoctorSummary
 
@@ -54,6 +55,7 @@ class BookingResponse(BaseModel):
             reason_for_visit=booking.reason_for_visit,
             created_at=booking.created_at,
             cancelled_at=booking.cancelled_at,
+            cancelled_by=booking.cancelled_by,
             slot=SlotResponse.model_validate(booking.slot),
             doctor=BookingDoctorSummary(
                 id=doctor.id,

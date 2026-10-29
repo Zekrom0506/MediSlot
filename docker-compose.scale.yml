@@ -1,0 +1,84 @@
+# Scale-out experiment: several API copies behind the Nginx container, each
+# limited to one CPU, as if each copy had its own small server.
+# Used by scripts/scale_test.sh together with the main file, under its own
+# project name, so it never touches your normal development stack or its data:
+#   docker compose -p medislot-scale -f docker-compose.yml -f docker-compose.scale.yml up -d --scale api=3
+# Nothing is published on host ports, so it can run next to the normal stack.
+services:
+  redis:
+    ports: !reset []
+
+  postgres:
+    ports: !reset []
+    # The PostgreSQL default, written out because the experiment is about it:
+    # every API copy can open database_pool_size + database_max_overflow (20 + 20)
+    # connections, so 3 copies may ask for 120.
+    command: postgres -c max_connections=100
+
+  # Migrations run once, here, instead of in every API copy at the same time.
+  migrate:
+    build: ./backend
+    env_file: .env
+    command: alembic upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+    # Copies cannot share one host port; all traffic goes through Nginx instead.
+    ports: !reset []
+    cpus: 1
+    environment:
+      # Set by the script to point at PgBouncer in the last run.
+      DATABASE_URL: ${SCALE_DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}}
+      # Every simulated patient comes from the same machine, so the per-IP login
+      # limit and per-patient booking limit would hide the numbers we want.
+      LOGIN_RATE_LIMIT_PER_MINUTE: "1000000"
+      BOOKING_RATE_LIMIT_PER_MINUTE: "1000000"
+      LOG_LEVEL: WARNING
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  frontend:
+    ports: !reset []
+    # Nginx looks up "api" when it starts and spreads requests over every copy
+    # it finds (round robin), so it must start after all copies are up.
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Connection pooler: many app connections share a few real PostgreSQL ones.
+  # Transaction mode gives a server connection to a client only for the length
+  # of one transaction, which is all the app needs (row locks are per transaction).
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.24.1-p1
+    profiles: ["pgbouncer"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "40"
+      # psycopg prepares statements it runs often; PgBouncer 1.21+ can track them per client.
+      MAX_PREPARED_STATEMENTS: "200"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  locust:
+    image: locustio/locust:2.32.4
+    profiles: ["loadtest"]
+    user: root
+    working_dir: /mnt/locust
+    volumes:
+      - ./load_tests:/mnt/locust
+    cpus: ${LOCUST_CPUS:-4}

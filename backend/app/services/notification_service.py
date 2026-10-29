@@ -15,9 +15,8 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.config import get_settings
 from app.core.timezones import now_utc, to_local
 from app.models import Booking, Notification, Slot
-from app.models.enums import BookingStatus, NotificationChannel, NotificationStatus, NotificationType
+from app.models.enums import BookingStatus, CancelledBy, NotificationStatus, NotificationType
 from app.services.email_sender import EmailSender
-from app.services.sms_sender import SmsSender
 
 logger = logging.getLogger(__name__)
 
@@ -33,34 +32,25 @@ def load_booking(db: Session, booking_id: int) -> Booking | None:
     return db.scalar(query)
 
 
-def create_notifications(db: Session, booking: Booking, notification_type: NotificationType) -> list[int]:
-    """Add one email row, and one SMS row if the patient has a phone. Returns new ids.
+def create_notification(db: Session, booking: Booking, notification_type: NotificationType) -> int | None:
+    """Add one email notification row. Returns its id, or None if it already existed.
 
     ON CONFLICT DO NOTHING means asking twice for the same notification is harmless.
     """
-    channels = [NotificationChannel.EMAIL]
-    if booking.patient.phone_number:
-        channels.append(NotificationChannel.SMS)
-
-    created_ids = []
-    for channel in channels:
-        statement = (
-            insert(Notification)
-            .values(
-                user_id=booking.patient_id,
-                booking_id=booking.id,
-                type=notification_type.value,
-                channel=channel.value,
-                status=NotificationStatus.PENDING.value,
-            )
-            .on_conflict_do_nothing(constraint="uq_notifications_booking_type_channel")
-            .returning(Notification.id)
+    statement = (
+        insert(Notification)
+        .values(
+            user_id=booking.patient_id,
+            booking_id=booking.id,
+            type=notification_type.value,
+            status=NotificationStatus.PENDING.value,
         )
-        new_id = db.scalar(statement)
-        if new_id is not None:
-            created_ids.append(new_id)
+        .on_conflict_do_nothing(constraint="uq_notifications_booking_type")
+        .returning(Notification.id)
+    )
+    new_id = db.scalar(statement)
     db.commit()
-    return created_ids
+    return new_id
 
 
 def enqueue_notification(notification_id: int) -> None:
@@ -81,7 +71,8 @@ def notify_booking(db: Session, booking_id: int, notification_type: Notification
         booking = load_booking(db, booking_id)
         if booking is None:
             return
-        for notification_id in create_notifications(db, booking, notification_type):
+        notification_id = create_notification(db, booking, notification_type)
+        if notification_id is not None:
             enqueue_notification(notification_id)
     except Exception:
         db.rollback()
@@ -102,6 +93,11 @@ def build_message(notification: Notification, booking: Booking) -> tuple[str, st
     elif notification.type == NotificationType.CANCELLATION.value:
         subject = "Your MediSlot appointment was cancelled"
         line = f"Your appointment with {doctor.user.full_name} on {when} has been cancelled."
+        if booking.cancelled_by == CancelledBy.CLINIC.value:
+            line += (
+                " The clinic cancelled it; we are sorry for the trouble."
+                " Please book another time on MediSlot."
+            )
     else:
         subject = "Reminder: your MediSlot appointment is tomorrow"
         line = f"This is a reminder of your appointment with {doctor.user.full_name} on {when}."
@@ -110,9 +106,7 @@ def build_message(notification: Notification, booking: Booking) -> tuple[str, st
     return subject, body
 
 
-def deliver_notification(
-    db: Session, notification_id: int, email_sender: EmailSender, sms_sender: SmsSender
-) -> None:
+def deliver_notification(db: Session, notification_id: int, email_sender: EmailSender) -> None:
     """Send one notification and record the attempt. Re-raises on failure so Celery can retry."""
     notification = db.get(Notification, notification_id)
     if notification is None or notification.status == NotificationStatus.SENT.value:
@@ -122,10 +116,7 @@ def deliver_notification(
     notification.attempts += 1
     try:
         subject, body = build_message(notification, booking)
-        if notification.channel == NotificationChannel.EMAIL.value:
-            email_sender.send(booking.patient.email, subject, body)
-        else:
-            sms_sender.send(booking.patient.phone_number, f"{subject}. {body}")
+        email_sender.send(booking.patient.email, subject, body)
     except Exception as error:
         notification.last_error = str(error)[:1000]
         db.commit()

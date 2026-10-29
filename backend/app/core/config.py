@@ -30,7 +30,6 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_use_tls: bool = False
     email_from_address: str = "MediSlot <no-reply@medislot.dev>"
-    sms_provider: str = "log"
     reminder_hours_before: int = 24
 
     rate_limit_enabled: bool = True
@@ -40,6 +39,8 @@ class Settings(BaseSettings):
     clinic_timezone: str = "Asia/Kolkata"
     slot_generation_days: int = 14
     cancellation_deadline_hours: int = 2
+    # Stops one account from holding a big share of the calendar.
+    max_upcoming_bookings_per_patient: int = 5
 
     jwt_secret_key: str = DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"

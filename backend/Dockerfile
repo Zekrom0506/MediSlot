@@ -12,5 +12,10 @@ COPY . .
 
 EXPOSE 8000
 # --proxy-headers makes request.client.host the real visitor IP behind Nginx,
-# which the per-IP login rate limit depends on.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# which the per-IP login rate limit depends on. Only proxies inside the Docker
+# network are trusted (uvicorn reads FORWARDED_ALLOW_IPS): uvicorn then takes the
+# right-most address that is not one of our own proxies, so an X-Forwarded-For
+# header made up by the visitor is ignored. Never use "*" here: it trusts the
+# left-most address, which the visitor controls.
+ENV FORWARDED_ALLOW_IPS=172.16.0.0/12
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

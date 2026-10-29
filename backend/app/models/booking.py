@@ -4,7 +4,7 @@ from sqlalchemy import DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, enum_column
-from app.models.enums import BookingStatus
+from app.models.enums import BookingStatus, CancelledBy
 from app.models.slot import Slot
 from app.models.user import User
 
@@ -32,6 +32,7 @@ class Booking(Base):
     reason_for_visit: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_by: Mapped[str | None] = mapped_column(enum_column(CancelledBy))
 
     slot: Mapped[Slot] = relationship()
     patient: Mapped[User] = relationship()

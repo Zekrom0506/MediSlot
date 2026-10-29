@@ -52,6 +52,13 @@ Change at least:
 | `GRAFANA_ADMIN_PASSWORD` | a strong password |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS` | your email provider, e.g. Amazon SES SMTP |
 
+Optional: `FORWARDED_ALLOW_IPS` (default `172.16.0.0/12`, Docker's usual address range). Only these
+proxies are trusted for the visitor IP used by the login rate limit. If `docker network inspect` shows your
+network on another range (e.g. `192.168.x.x`), set it to that range. Never set it to `*`.
+
+If you use a managed PostgreSQL instead of the container, it must allow the `btree_gist` extension
+(Amazon RDS, Neon and Supabase do); migration 0003 creates it.
+
 `chmod 600 .env` so only your user can read it.
 
 ## 5. Start the stack
