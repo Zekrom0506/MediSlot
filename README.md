@@ -35,7 +35,7 @@ sequenceDiagram
     participant Q as Redis queue
     P->>A: POST /api/bookings (Idempotency-Key: uuid)
     A->>DB: key seen before? (return saved response if yes)
-    A->>DB: BEGIN; lock patient row, doctor row (KEY SHARE), SELECT slot FOR UPDATE
+    A->>DB: BEGIN, lock patient row, doctor row (KEY SHARE), SELECT slot FOR UPDATE
     Note over A,DB: other requests for this slot wait here
     A->>DB: slot available? patient within limits?<br/>insert booking, mark slot booked,<br/>save idempotency key + response
     A->>DB: COMMIT
@@ -149,7 +149,7 @@ pytest                            # all tests
 pytest --cov --cov-report=html    # coverage report in backend/htmlcov/index.html
 ```
 
-Latest run: **138 tests passed, 98% line coverage.**
+Latest run: **139 tests passed, 98% line coverage.**
 
 | Test | What it proves | Result |
 |---|---|---|
